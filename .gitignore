@@ -1,0 +1,15 @@
+# Source code (reference only, do not commit)
+source/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
