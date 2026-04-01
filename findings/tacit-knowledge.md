@@ -416,3 +416,56 @@ echo "export MY_VAR=value" >> "$CLAUDE_ENV_FILE"
 | Dream System | `memory/*.md` を自動統合する仕組み |
 | 発動ゲート | 24時間経過 + 5セッション蓄積 + Lock 取得の三段階 |
 | KAIROS との排他 | KAIROS active 時は Dream 無効化される |
+
+---
+
+## 7. GPT-5.4 深層レビューによる修正・追加（2026-04-01）
+
+GPT-5.4が16ファイルを実際に読み、行番号付きで指摘した修正と追加の暗黙知。
+
+### 修正（私の誤り8件）
+
+| 当初の主張 | 修正 | 根拠 |
+|---|---|---|
+| @includeはinclude先が優先 | **親→子順**で積まれる | claudemd.ts:663 |
+| autoMemoryDirectoryはproject設定で上書き可能 | **projectSettings意図的除外**（セキュリティ） | paths.ts:172 |
+| SessionEnd Hookは通常と同じタイムアウト | **既定1,500ms**（高速終了必須） | hooks.ts:175 |
+| MCPスキルでも!command実行される | **loadedFrom !== 'mcp'で遮断** | loadSkillsDir.ts:374 |
+| extractMemoriesは毎ターン必ず実行 | **直書き検出でスキップ+coalesce** | extractMemories.ts:348,557 |
+| Hook trust制御は一部イベントのみ | **インタラクティブで全Hook依存** | hooks.ts:286 |
+| policy設定変更もHookでブロック可能 | **blocked:falseに強制** | hooks.ts:4232 |
+| システムプロンプト節は毎回再計算 | **節名キャッシュで再利用、cacheBreakのみ再計算** | systemPromptSections.ts:50 |
+
+### 追加の暗黙知（GPT-5.4発見16件）
+
+| # | 発見 | ファイル | 重要性 |
+|---|---|---|---|
+| 1 | @includeの深さ上限=5 | claudemd.ts | 循環参照・深い入れ子を防止 |
+| 2 | MEMORY.mdはバイト数25KBでも切られる | memdir.ts:82 | 長文1行だと行数に余裕があっても失われる |
+| 3 | autoMemoryDirectoryはprojectSettings除外 | paths.ts:172 | ~/.ssh誘導攻撃防止 |
+| 4 | メモリスキャンはallSettledで部分失敗耐性 | memoryScan.ts:45 | 大量メモリでも全滅しない |
+| 5 | 関連メモリ選択は前ターン除外後に5枠選別 | findRelevantMemories.ts:35 | 長セッションで新規発見促進 |
+| 6 | 抽出エージェントは検証禁止・2ターン並列最適化 | prompts.ts:39 | grep/コード確認を禁止 |
+| 7 | スキル安全プロパティはallowlist方式 | SkillTool.ts:525 | 新規プロパティは既定で不許可 |
+| 8 | bundledスキルは予算不足時も説明保持 | prompt.ts:93 | ユーザースキルは名前のみになりうる |
+| 9 | 全Hookがインタラクティブ時Trust依存 | hooks.ts:286 | Trust未承認で全Hookスキップ |
+| 10 | asyncRewakeがスキーマで正式サポート | hooks.ts:55 | exit 2でモデル再起動可能 |
+| 11 | policy設定変更はHookでブロック不可 | hooks.ts:4232 | blocked:falseに強制 |
+| 12 | CCRでlocalスコープもプロジェクト名前空間付き | agentMemory.ts:30 | 端末ローカルと思うとデータ境界誤り |
+| 13 | gitignoreされたディレクトリのスキルはスキップ | loadSkillsDir.ts | node_modules内偽スキル混入防止 |
+| 14 | InstructionsLoaded Hookがload_reason単位で発火 | hooks設定 | compact/include/session_start別追跡 |
+| 15 | SYSTEM_PROMPT_DYNAMIC_BOUNDARYを跨ぐとキャッシュ急落 | prompts.ts:106 | 性能とコスト |
+| 16 | Skill予算は2%にスケール済み（CHANGELOG v2.1.32） | SkillTool | 1%は古い情報 |
+
+### FDE実用Tips（GPT-5.4提案8件）
+
+| # | 問題 | 暗黙知 | 具体的実装 |
+|---|---|---|---|
+| 1 | MEMORY.md肥大化 | 200行+25KB二重上限 | 各行150文字。詳細は個別ファイルへ |
+| 2 | メモリ保存先の乗っ取り | projectSettings除外 | ~/.claude/settings.jsonでautoMemoryDirectory指定 |
+| 3 | 25スキルの選択ノイズ | paths:で条件付き休眠 | OCRスキルにpaths: ["**/vision_ocr.py"]追加 |
+| 4 | 偽スキル混入 | gitignoreスキップ | .gitignoreにnode_modules/vendor/明記 |
+| 5 | エージェント間メモリリーク | memory分離 | 調査=user、実装=project、デバッグ=local |
+| 6 | Hook全発火で重い | if条件フィルタ | "if": "Write(*.gs)|Edit(*.gs)"でGASのみ |
+| 7 | 指示ファイル追跡 | InstructionsLoaded Hook | JSONL監査ログ出力 |
+| 8 | MCPスキルで!command不動 | loadedFrom:mcp遮断 | 実行系=ローカル、宣言系=MCPに分離 |
